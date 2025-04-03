@@ -15,9 +15,10 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Configuração do CORS para permitir requisições do frontend
 app.use(cors({
-  origin: ['http://127.0.0.1:5501', 'http://localhost:5501', 'http://127.0.0.1:5500', 'http://localhost:5500', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
+  origin: ['https://frontend-one-kappa-88.vercel.app', process.env.CORS_ORIGIN],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Definir rotas
