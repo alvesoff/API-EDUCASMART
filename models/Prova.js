@@ -30,8 +30,8 @@ const QuestaoSchema = new mongoose.Schema({
   },
   dificuldade: {
     type: String,
-    enum: ['facil', 'medio', 'dificil'],
-    default: 'medio'
+    enum: ['Fácil', 'Médio', 'Difícil'],
+    default: 'Médio'
   },
   serie: {
     type: String

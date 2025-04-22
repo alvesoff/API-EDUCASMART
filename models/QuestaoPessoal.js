@@ -26,8 +26,8 @@ const QuestaoPessoalSchema = new mongoose.Schema({
   alternativas: [AlternativaSchema],
   dificuldade: {
     type: String,
-    enum: ['FÁCIL', 'PADRÃO', 'DIFÍCIL'],
-    default: 'PADRÃO'
+    enum: ['facil', 'medio', 'dificil'],
+    default: 'medio'
   },
   serie: {
     type: String
