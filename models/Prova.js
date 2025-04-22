@@ -8,6 +8,10 @@ const AlternativaSchema = new mongoose.Schema({
   correta: {
     type: Boolean,
     default: false
+  },
+  explicacao: {
+    type: String,
+    required: false
   }
 });
 
@@ -26,12 +30,15 @@ const QuestaoSchema = new mongoose.Schema({
   },
   dificuldade: {
     type: String,
-    enum: ['FÁCIL', 'PADRÃO', 'DIFÍCIL'],
-    default: 'PADRÃO'
+    enum: ['facil', 'medio', 'dificil'],
+    default: 'medio'
   },
   serie: {
     type: String
-  }
+  },
+  tags: [{
+    type: String
+  }]
 });
 
 const ProvaSchema = new mongoose.Schema({
