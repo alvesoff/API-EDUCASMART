@@ -15,7 +15,7 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Configuração do CORS para permitir requisições do frontend
 app.use(cors({
-  origin: ['https://frontend-one-kappa-88.vercel.app', 'https://frontend-pys4p8cyp-alvesoffs-projects.vercel.app', process.env.CORS_ORIGIN],
+  origin: origin: '*', // Permite acesso de qualquer origem
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
