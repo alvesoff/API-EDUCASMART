@@ -426,3 +426,135 @@ exports.getEstatisticasProva = async (req, res) => {
     res.status(500).send('Erro no servidor');
   }
 };
+
+// @desc    Listar todos os resultados
+// @route   GET /api/resultados
+// @access  Private (Admin/Professor)
+exports.getAllResultados = async (req, res) => {
+  try {
+    // Verificar permissão (apenas professores e administradores)
+    if (req.user.tipo !== 'professor' && req.user.tipo !== 'admin') {
+      return res.status(403).json({ msg: 'Acesso negado' });
+    }
+
+    // Configurar paginação
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    // Construir a query
+    let query = {};
+    
+    // Filtrar por status se fornecido
+    if (req.query.status) {
+      query.status = req.query.status;
+    }
+    
+    // Filtrar por prova se fornecido
+    if (req.query.provaId) {
+      query.prova = req.query.provaId;
+    }
+    
+    // Filtrar por aluno se fornecido
+    if (req.query.alunoId) {
+      query.aluno = req.query.alunoId;
+    }
+    
+    // Filtrar por turma (através da informação do aluno)
+    if (req.query.turma) {
+      // Precisamos fazer um lookup para isso
+      const alunosDaTurma = await require('../models/Usuario').find({ turma: req.query.turma }).select('_id');
+      const alunosIds = alunosDaTurma.map(aluno => aluno._id);
+      query.aluno = { $in: alunosIds };
+    }
+
+    // Contar total de documentos que correspondem à query
+    const total = await Resultado.countDocuments(query);
+    
+    // Buscar resultados com paginação
+    const resultados = await Resultado.find(query)
+      .populate('prova', 'titulo disciplina serie turmas')
+      .populate('aluno', 'nome email turma')
+      .sort({ dataInicio: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      success: true,
+      count: resultados.length,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      data: resultados
+    });
+  } catch (err) {
+    console.error('Erro ao listar resultados:', err.message);
+    res.status(500).send('Erro no servidor');
+  }
+};
+
+// @desc    Buscar resultados pelo código da prova
+// @route   GET /api/resultados/codigo/:codigoProva
+// @access  Private (Admin/Professor)
+exports.getResultadosPorCodigoProva = async (req, res) => {
+  try {
+    // Verificar permissão (apenas professores e administradores)
+    if (req.user.tipo !== 'professor' && req.user.tipo !== 'admin') {
+      return res.status(403).json({ msg: 'Acesso negado' });
+    }
+
+    const { codigoProva } = req.params;
+
+    if (!codigoProva) {
+      return res.status(400).json({ msg: 'Código da prova é obrigatório' });
+    }
+
+    // Buscar prova pelo código
+    const prova = await Prova.findOne({ codigo: codigoProva });
+
+    if (!prova) {
+      return res.status(404).json({ msg: 'Prova não encontrada com este código' });
+    }
+
+    // Configurar paginação
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    // Construir a query base
+    let query = { codigoProva };
+
+    // Filtrar por status se fornecido
+    if (req.query.status) {
+      query.status = req.query.status;
+    }
+
+    // Filtrar por turma se fornecido
+    if (req.query.turma) {
+      query.turma = req.query.turma;
+    }
+
+    // Contar total de documentos que correspondem à query
+    const total = await Resultado.countDocuments(query);
+
+    // Buscar resultados com paginação
+    const resultados = await Resultado.find(query)
+      .populate('prova', 'titulo disciplina serie turmas')
+      .populate('aluno', 'nome email turma')
+      .sort({ dataInicio: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      success: true,
+      count: resultados.length,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      data: resultados
+    });
+  } catch (err) {
+    console.error('Erro ao buscar resultados por código de prova:', err.message);
+    res.status(500).send('Erro no servidor');
+  }
+};
