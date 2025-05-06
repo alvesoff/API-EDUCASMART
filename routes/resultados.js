@@ -82,10 +82,10 @@ router.put(
   resultadosController.finalizarProva
 );
 
-// @route   GET /api/resultados
-// @desc    Listar todos os resultados
-// @access  Private (Admin/Professor)
-router.get('/', auth, resultadosController.getAllResultados);
+// @route   GET /api/resultados/:id
+// @desc    Obter resultado de uma prova
+// @access  Private (Aluno/Professor)
+router.get('/:id', auth, resultadosController.getResultado);
 
 // @route   GET /api/resultados/aluno/:alunoId
 // @desc    Listar resultados de um aluno
@@ -101,15 +101,5 @@ router.get('/prova/:provaId', auth, resultadosController.getResultadosPorProva);
 // @desc    Obter estatísticas de uma prova
 // @access  Private (Professor)
 router.get('/estatisticas/:provaId', auth, resultadosController.getEstatisticasProva);
-
-// @route   GET /api/resultados/codigo/:codigoProva
-// @desc    Buscar resultados pelo código da prova
-// @access  Private (Admin/Professor)
-router.get('/codigo/:codigoProva', auth, resultadosController.getResultadosPorCodigoProva);
-
-// @route   GET /api/resultados/:id
-// @desc    Obter resultado de uma prova
-// @access  Private (Aluno/Professor)
-router.get('/:id', auth, resultadosController.getResultado);
 
 module.exports = router;
