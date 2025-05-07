@@ -107,6 +107,11 @@ router.get('/estatisticas/:provaId', auth, resultadosController.getEstatisticasP
 // @access  Private (Admin/Professor)
 router.get('/codigo/:codigoProva', auth, resultadosController.getResultadosPorCodigoProva);
 
+// @route   GET /api/resultados/estatisticas/avancadas
+// @desc    Obter estatísticas avançadas para dashboard
+// @access  Private (Admin/Professor)
+router.get('/estatisticas/avancadas', auth, resultadosController.getEstatisticasAvancadas);
+
 // @route   GET /api/resultados/:id
 // @desc    Obter resultado de uma prova
 // @access  Private (Aluno/Professor)

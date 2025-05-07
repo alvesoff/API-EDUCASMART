@@ -558,3 +558,304 @@ exports.getResultadosPorCodigoProva = async (req, res) => {
     res.status(500).send('Erro no servidor');
   }
 };
+
+// @desc    Obter estatísticas avançadas para dashboard
+// @route   GET /api/resultados/estatisticas/avancadas
+// @access  Private (Admin/Professor)
+exports.getEstatisticasAvancadas = async (req, res) => {
+  try {
+    // Verificar permissão (apenas professores e administradores)
+    if (req.user.tipo !== 'professor' && req.user.tipo !== 'admin') {
+      return res.status(403).json({ msg: 'Acesso negado' });
+    }
+
+    // Filtros opcionais
+    const { disciplina, turma, periodo } = req.query;
+    
+    // Construir query base
+    let query = { status: 'finalizada' };
+    let matchProva = {};
+    
+    // Aplicar filtro de disciplina
+    if (disciplina) {
+      matchProva.disciplina = disciplina;
+    }
+    
+    // Aplicar filtro de turma
+    if (turma) {
+      matchProva.turmas = turma;
+    }
+    
+    // Aplicar filtro de período
+    if (periodo) {
+      const hoje = new Date();
+      let dataInicio = new Date();
+      
+      switch(periodo) {
+        case 'semana':
+          dataInicio.setDate(hoje.getDate() - 7);
+          break;
+        case 'mes':
+          dataInicio.setMonth(hoje.getMonth() - 1);
+          break;
+        case 'trimestre':
+          dataInicio.setMonth(hoje.getMonth() - 3);
+          break;
+        case 'semestre':
+          dataInicio.setMonth(hoje.getMonth() - 6);
+          break;
+        case 'ano':
+          dataInicio.setFullYear(hoje.getFullYear() - 1);
+          break;
+        default:
+          // Não aplicar filtro de data
+          break;
+      }
+      
+      if (periodo !== 'todos') {
+        query.dataFim = { $gte: dataInicio, $lte: hoje };
+      }
+    }
+
+    // Obter todos os resultados com os filtros aplicados
+    const resultados = await Resultado.find(query)
+      .populate({
+        path: 'prova',
+        match: matchProva,
+        select: 'titulo disciplina turmas questoes dataInicio dataFim'
+      })
+      .populate('aluno', 'nome email turma')
+      .sort({ dataFim: -1 });
+    
+    // Filtrar resultados cujas provas não atendem aos critérios
+    const resultadosFiltrados = resultados.filter(r => r.prova !== null);
+    
+    if (resultadosFiltrados.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          evoluçãoTemporal: [],
+          mediaPorConteudo: [],
+          mediaPorTurma: [],
+          distribuicaoNotas: [],
+          questoesDificeis: [],
+          desempenhoIndividual: []
+        }
+      });
+    }
+
+    // === Análise 1: Evolução temporal ===
+    // Agrupa os resultados por data (mês) e calcula a média
+    const evoluçãoTemporal = {};
+    resultadosFiltrados.forEach(resultado => {
+      const data = new Date(resultado.dataFim);
+      const mesAno = `${data.getMonth() + 1}/${data.getFullYear()}`;
+      
+      if (!evoluçãoTemporal[mesAno]) {
+        evoluçãoTemporal[mesAno] = {
+          totalNotas: 0,
+          quantidade: 0,
+          media: 0
+        };
+      }
+      
+      evoluçãoTemporal[mesAno].totalNotas += resultado.percentualAcerto;
+      evoluçãoTemporal[mesAno].quantidade += 1;
+    });
+    
+    // Calcular médias e formatar para o gráfico
+    const evoluçãoTemporalArray = Object.keys(evoluçãoTemporal).map(mesAno => {
+      const item = evoluçãoTemporal[mesAno];
+      return {
+        periodo: mesAno,
+        media: (item.totalNotas / item.quantidade).toFixed(2)
+      };
+    }).sort((a, b) => {
+      const [mesA, anoA] = a.periodo.split('/');
+      const [mesB, anoB] = b.periodo.split('/');
+      return new Date(anoA, mesA - 1) - new Date(anoB, mesB - 1);
+    });
+
+    // === Análise 2: Média por conteúdo/tópico ===
+    // Mapear questões por conteúdo e calcular taxa de acerto
+    const conteudoMap = {};
+    
+    resultadosFiltrados.forEach(resultado => {
+      resultado.respostas.forEach(resposta => {
+        const questaoIndex = resposta.questao;
+        const questao = resultado.prova.questoes[questaoIndex];
+        
+        if (questao && questao.conteudo) {
+          if (!conteudoMap[questao.conteudo]) {
+            conteudoMap[questao.conteudo] = {
+              totalRespostas: 0,
+              totalAcertos: 0,
+              taxaAcerto: 0
+            };
+          }
+          
+          conteudoMap[questao.conteudo].totalRespostas += 1;
+          if (resposta.correta) {
+            conteudoMap[questao.conteudo].totalAcertos += 1;
+          }
+        }
+      });
+    });
+    
+    // Calcular taxa de acerto por conteúdo
+    const mediaPorConteudo = Object.keys(conteudoMap).map(conteudo => {
+      const item = conteudoMap[conteudo];
+      return {
+        conteudo,
+        taxaAcerto: ((item.totalAcertos / item.totalRespostas) * 100).toFixed(2),
+        totalRespostas: item.totalRespostas
+      };
+    }).sort((a, b) => b.taxaAcerto - a.taxaAcerto);
+
+    // === Análise 3: Média por turma ===
+    const turmaMap = {};
+    
+    resultadosFiltrados.forEach(resultado => {
+      if (resultado.aluno && resultado.aluno.turma) {
+        const turma = resultado.aluno.turma;
+        
+        if (!turmaMap[turma]) {
+          turmaMap[turma] = {
+            totalNotas: 0,
+            quantidade: 0,
+            media: 0
+          };
+        }
+        
+        turmaMap[turma].totalNotas += resultado.percentualAcerto;
+        turmaMap[turma].quantidade += 1;
+      }
+    });
+    
+    // Calcular média por turma
+    const mediaPorTurma = Object.keys(turmaMap).map(turma => {
+      const item = turmaMap[turma];
+      return {
+        turma,
+        media: (item.totalNotas / item.quantidade).toFixed(2),
+        totalAlunos: item.quantidade
+      };
+    }).sort((a, b) => b.media - a.media);
+
+    // === Análise 4: Distribuição de notas ===
+    const distribuicaoNotas = [
+      { faixa: '0-2.0', quantidade: 0 },
+      { faixa: '2.1-4.0', quantidade: 0 },
+      { faixa: '4.1-6.0', quantidade: 0 },
+      { faixa: '6.1-8.0', quantidade: 0 },
+      { faixa: '8.1-10.0', quantidade: 0 }
+    ];
+
+    resultadosFiltrados.forEach(resultado => {
+      const nota = (resultado.percentualAcerto / 10); // convertendo percentual para nota de 0-10
+      if (nota <= 2) distribuicaoNotas[0].quantidade++;
+      else if (nota <= 4) distribuicaoNotas[1].quantidade++;
+      else if (nota <= 6) distribuicaoNotas[2].quantidade++;
+      else if (nota <= 8) distribuicaoNotas[3].quantidade++;
+      else distribuicaoNotas[4].quantidade++;
+    });
+
+    // === Análise 5: Questões mais difíceis ===
+    const questoesMap = {};
+    
+    resultadosFiltrados.forEach(resultado => {
+      resultado.respostas.forEach(resposta => {
+        const questaoIndex = resposta.questao;
+        const questao = resultado.prova.questoes[questaoIndex];
+        
+        if (questao) {
+          const questaoId = `${resultado.prova._id}_${questaoIndex}`;
+          
+          if (!questoesMap[questaoId]) {
+            questoesMap[questaoId] = {
+              id: questaoId,
+              enunciado: questao.enunciado.substring(0, 100) + (questao.enunciado.length > 100 ? '...' : ''),
+              disciplina: resultado.prova.disciplina,
+              conteudo: questao.conteudo || 'Não especificado',
+              totalRespostas: 0,
+              totalAcertos: 0,
+              taxaAcerto: 0
+            };
+          }
+          
+          questoesMap[questaoId].totalRespostas += 1;
+          if (resposta.correta) {
+            questoesMap[questaoId].totalAcertos += 1;
+          }
+        }
+      });
+    });
+    
+    // Calcular taxa de acerto por questão e identificar as mais difíceis
+    const questoesDificeis = Object.values(questoesMap)
+      .filter(q => q.totalRespostas >= 5) // Questões com pelo menos 5 respostas
+      .map(q => ({
+        ...q,
+        taxaAcerto: ((q.totalAcertos / q.totalRespostas) * 100).toFixed(2)
+      }))
+      .sort((a, b) => a.taxaAcerto - b.taxaAcerto) // Ordenar da menor para a maior taxa de acerto
+      .slice(0, 10); // Top 10 questões mais difíceis
+
+    // === Análise 6: Desempenho individual dos alunos ===
+    const alunosMap = {};
+    
+    resultadosFiltrados.forEach(resultado => {
+      if (resultado.aluno) {
+        const alunoId = resultado.aluno._id.toString();
+        
+        if (!alunosMap[alunoId]) {
+          alunosMap[alunoId] = {
+            id: alunoId,
+            nome: resultado.aluno.nome,
+            turma: resultado.aluno.turma,
+            totalNotas: 0,
+            totalProvas: 0,
+            mediaGeral: 0,
+            evolucao: []
+          };
+        }
+        
+        alunosMap[alunoId].totalNotas += resultado.percentualAcerto;
+        alunosMap[alunoId].totalProvas += 1;
+        
+        // Adicionar resultado à evolução do aluno
+        alunosMap[alunoId].evolucao.push({
+          data: resultado.dataFim,
+          percentualAcerto: resultado.percentualAcerto,
+          provaId: resultado.prova._id,
+          provaTitulo: resultado.prova.titulo
+        });
+      }
+    });
+    
+    // Calcular média geral por aluno e ordenar evolução
+    const desempenhoIndividual = Object.values(alunosMap).map(aluno => {
+      return {
+        ...aluno,
+        mediaGeral: (aluno.totalNotas / aluno.totalProvas).toFixed(2),
+        evolucao: aluno.evolucao.sort((a, b) => new Date(a.data) - new Date(b.data))
+      };
+    }).sort((a, b) => b.mediaGeral - a.mediaGeral);
+
+    // Retornar todas as análises
+    res.json({
+      success: true,
+      data: {
+        evoluçãoTemporal: evoluçãoTemporalArray,
+        mediaPorConteudo,
+        mediaPorTurma,
+        distribuicaoNotas,
+        questoesDificeis,
+        desempenhoIndividual: desempenhoIndividual.slice(0, 20) // Limitar a 20 alunos
+      }
+    });
+  } catch (err) {
+    console.error('Erro ao gerar estatísticas avançadas:', err.message);
+    res.status(500).send('Erro no servidor');
+  }
+};
